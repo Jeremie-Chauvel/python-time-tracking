@@ -1,9 +1,9 @@
 import serial
 from serial.tools import list_ports as list_serial_ports
 from time import sleep, time
-
 from io import TextIOWrapper
 
+from logger.logger import Logger
 
 DEFAULT_BAUD_RATE = 9600
 PORT_OPEN_TIMEOUT = 5
@@ -21,6 +21,7 @@ class SerialWrapper:
             bytesize=serial.EIGHTBITS,
             timeout=2,
         )
+        self.logger = Logger(__name__)
 
         time_before_open = time()
         while not self.ser.isOpen():
@@ -29,7 +30,7 @@ class SerialWrapper:
                 raise OpenPortException(
                     f"reached timeout while trying to open port {arduino_port}"
                 )
-        print(f"serial initialized with port: {arduino_port}")
+        self.logger.info(f"serial initialized with port: {arduino_port}")
         self.sio = TextIOWrapper(self.ser)
 
     def read(self):
