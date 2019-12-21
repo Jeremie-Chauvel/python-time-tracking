@@ -1,0 +1,15 @@
+{
+    "python.pythonPath": "env\\Scripts\\python.exe",
+    "python.envFile": ".env",
+    "python.jediEnabled": false,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "env": true,
+        "**/.DS_Store": true
+    },
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true
+}
