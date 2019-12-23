@@ -1,5 +1,8 @@
 import serial
+from serial.serialutil import SerialException
 from serial.tools import list_ports as list_serial_ports
+from datetime import datetime
+
 from time import sleep, time
 from io import TextIOWrapper
 
@@ -7,6 +10,18 @@ from logger.logger import Logger
 
 DEFAULT_BAUD_RATE = 9600
 PORT_OPEN_TIMEOUT = 5
+
+
+def coroutine(func):
+    """Decorator to start coroutines"""
+
+    @wraps(func)
+    def primer(*args, **kwargs):
+        gen = func(*args, **kwargs)
+        next(gen)
+        return gen
+
+    return primer
 
 
 class SerialWrapper:
@@ -22,6 +37,7 @@ class SerialWrapper:
             timeout=2,
         )
         self.logger = Logger(__name__)
+        self.activities_list = []
 
         time_before_open = time()
         while not self.ser.isOpen():
@@ -33,6 +49,8 @@ class SerialWrapper:
         self.logger.info(f"serial initialized with port: {arduino_port}")
         self.sio = TextIOWrapper(self.ser)
 
+        self.coroutine = self.get_activity_coroutine()
+
     def read(self):
         """Read from arduino buffer"""
         if not self.ser.inWaiting():
@@ -40,12 +58,51 @@ class SerialWrapper:
 
         return self.sio.read()
 
+    def _activity_coroutine(self):
+        def extend_with_stop(activities_list: list):
+            """Add stop data point"""
+            activities_list.append({"activity": "Stop", "time": datetime.now()})
+            return activities_list
+
+        read_a_new_value = True
+        while read_a_new_value:
+            value = None
+            read_a_new_value = yield value
+            try:
+                data_from_serial = self.read()
+            except SerialException:
+                return extend_with_stop(self.activities_list)
+            if data_from_serial and data_from_serial != "\n":
+                self.logger.debug(data_from_serial)
+                value = {
+                    "activity": data_from_serial,
+                    "time": datetime.now(),
+                }
+                self.activities_list.append(value)
+
+        return extend_with_stop(self.activities_list)
+
+    def get_activity_coroutine(self):
+        coroutine = self._activity_coroutine()
+        next(coroutine)
+        return coroutine
+
+    def fetch_new_value(self):
+        return self.coroutine.send(True)
+
+    def stop(self):
+        self.coroutine.send(False)
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.ser.close()
         return True
+
+    @property
+    def activities(self):
+        return self.activities_list
 
     @staticmethod
     def get_arduino_com_port():
@@ -64,6 +121,16 @@ class SerialWrapper:
             )
 
         return ports_used_by_arduino[0].device
+
+    @staticmethod
+    def map_activities_for_export(activities: list, activities_map: dict):
+        return map(
+            lambda activity: (
+                activities_map.get(activity.get("activity")),
+                activity.get("time").strftime("%c"),
+            ),
+            activities,
+        )
 
 
 class OpenPortException(Exception):
